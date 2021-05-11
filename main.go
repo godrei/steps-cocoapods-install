@@ -4,280 +4,117 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"regexp"
-	"strconv"
-	"strings"
 
-	"github.com/bitrise-io/bitrise-init/scanners/ios"
-	"github.com/bitrise-io/bitrise-init/utility"
 	"github.com/bitrise-io/go-steputils/cache"
 	"github.com/bitrise-io/go-steputils/command/gems"
 	"github.com/bitrise-io/go-steputils/command/rubycommand"
+	"github.com/bitrise-io/go-steputils/stepconf"
 	"github.com/bitrise-io/go-utils/command"
 	"github.com/bitrise-io/go-utils/fileutil"
 	"github.com/bitrise-io/go-utils/log"
-	"github.com/bitrise-io/go-utils/pathutil"
-	"github.com/pkg/errors"
 )
-
-// ConfigsModel ...
-type ConfigsModel struct {
-	SourceRootPath  string
-	PodfilePath     string
-	Verbose         string
-	IsCacheDisabled string
-}
-
-func createConfigsModelFromEnvs() ConfigsModel {
-	return ConfigsModel{
-		SourceRootPath:  os.Getenv("source_root_path"),
-		PodfilePath:     os.Getenv("podfile_path"),
-		Verbose:         os.Getenv("verbose"),
-		IsCacheDisabled: os.Getenv("is_cache_disabled"),
-	}
-}
-
-func (configs ConfigsModel) print() {
-	log.Infof("Configs:")
-	log.Printf("- SourceRootPath: %s", configs.SourceRootPath)
-	log.Printf("- PodfilePath: %s", configs.PodfilePath)
-	log.Printf("- Verbose: %s", configs.Verbose)
-	log.Printf("- IsCacheDisabled: %s", configs.IsCacheDisabled)
-}
-
-func (configs ConfigsModel) validate() error {
-	if configs.SourceRootPath == "" {
-		return errors.New("no SourceRootPath parameter specified")
-	}
-	if exist, err := pathutil.IsDirExists(configs.SourceRootPath); err != nil {
-		return fmt.Errorf("failed to check if SourceRootPath exists at: %s, error: %s", configs.SourceRootPath, err)
-	} else if !exist {
-		return fmt.Errorf("SourceRootPath does not exist at: %s", configs.SourceRootPath)
-	}
-
-	if configs.PodfilePath != "" {
-		if exist, err := pathutil.IsPathExists(configs.PodfilePath); err != nil {
-			return fmt.Errorf("failed to check if PodfilePath exists at: %s, error: %s", configs.PodfilePath, err)
-		} else if !exist {
-			return fmt.Errorf("PodfilePath does not exist at: %s", configs.PodfilePath)
-		}
-	}
-
-	if configs.Verbose != "" {
-		if configs.Verbose != "true" && configs.Verbose != "false" {
-			return fmt.Errorf(`invalid Verbose parameter specified: %s, available: ["true", "false"]`, configs.Verbose)
-		}
-	}
-
-	return nil
-}
 
 func failf(format string, v ...interface{}) {
 	log.Errorf(format, v...)
 	os.Exit(1)
 }
 
-func findMostRootPodfileInFileList(fileList []string) (string, error) {
-	podfiles, err := utility.FilterPaths(fileList,
-		ios.AllowPodfileBaseFilter,
-		ios.ForbidCarthageDirComponentFilter,
-		ios.ForbidPodsDirComponentFilter,
-		ios.ForbidGitDirComponentFilter,
-		ios.ForbidFramworkComponentWithExtensionFilter)
-	if err != nil {
-		return "", err
-	}
-
-	podfiles, err = utility.SortPathsByComponents(podfiles)
-	if err != nil {
-		return "", err
-	}
-
-	if len(podfiles) < 1 {
-		return "", nil
-	}
-
-	return podfiles[0], nil
-}
-
-func findMostRootPodfile(dir string) (string, error) {
-	fileList, err := utility.ListPathInDirSortedByComponents(dir, false)
-	if err != nil {
-		return "", err
-	}
-
-	return findMostRootPodfileInFileList(fileList)
-}
-
-func cocoapodsVersionFromPodfileLockContent(content string) string {
-	exp := regexp.MustCompile("COCOAPODS: (.+)")
-	match := exp.FindStringSubmatch(content)
-	if len(match) == 2 {
-		return match[1]
-	}
-	return ""
-}
-
-func cocoapodsVersionFromPodfileLock(podfileLockPth string) (string, error) {
-	content, err := fileutil.ReadStringFromFile(podfileLockPth)
-	if err != nil {
-		return "", err
-	}
-	return cocoapodsVersionFromPodfileLockContent(content), nil
-}
-
-// VersionSpec ...
-type VersionSpec struct {
-	Operator string
-	Version  string
-}
-
-func splitOperatorAndVersion(input string) (VersionSpec, error) {
-	splittedString := strings.Split(input, " ")
-	cnt := len(splittedString)
-
-	if cnt == 1 {
-		out := VersionSpec{"", splittedString[0]}
-		return out, nil
-	}
-
-	if cnt != 2 {
-		err := fmt.Errorf("Invalid version range: %s", input)
-		return VersionSpec{}, err
-	}
-
-	out := VersionSpec{splittedString[0], splittedString[1]}
-	return out, nil
-}
-
-func isIncludedInGemfileLockVersionRanges(input string, gemfileLockVersion string) (bool, error) {
-	var splittedVersions = strings.Split(gemfileLockVersion, ", ")
-
-	for _, each := range splittedVersions {
-		versionSpec, err := splitOperatorAndVersion(each)
-		if err != nil {
-			return false, err
-		}
-
-		switch versionSpec.Operator {
-		case "":
-			if input != versionSpec.Version {
-				return false, nil
-			}
-
-			continue
-		case "~>":
-			if input != versionSpec.Version {
-				return false, nil
-			}
-
-			continue
-		case ">=":
-			versions := strings.Split(versionSpec.Version, ".")
-			inputVersions := strings.Split(input, ".")
-
-			for i, version := range versions {
-				v1, err := strconv.Atoi(version)
-				if err != nil {
-					return false, err
-				}
-
-				v2, err := strconv.Atoi(inputVersions[i])
-				if err != nil {
-					return false, err
-				}
-
-				if i != len(versions)-1 && v1 == v2 {
-					continue
-				}
-				if v2 >= v1 {
-					break
-				} else {
-					return false, nil
-				}
-			}
-
-			continue
-		case "<":
-			versions := strings.Split(versionSpec.Version, ".")
-			inputVersions := strings.Split(input, ".")
-
-			for i, version := range versions {
-				v1, err := strconv.Atoi(version)
-				if err != nil {
-					return false, err
-				}
-
-				v2, err := strconv.Atoi(inputVersions[i])
-				if err != nil {
-					return false, err
-				}
-
-				if i != len(versions)-1 && v1 == v2 {
-					continue
-				}
-				if v2 < v1 {
-					break
-				} else {
-					return false, nil
-				}
-			}
-
-			continue
-		default:
-			err := fmt.Errorf("Unknown version operator: %s", each)
-			return false, err
-		}
-	}
-
-	return true, nil
-}
-
 func main() {
-	configs := createConfigsModelFromEnvs()
-
-	fmt.Println()
-	configs.print()
-
-	if err := configs.validate(); err != nil {
-		failf("Issue with input: %s", err)
+	configs, err := createConfigsModelFromEnvs()
+	if err != nil {
+		failf(err.Error())
 	}
+
+	stepconf.Print(configs)
 
 	//
-	// Search for Podfile
-	podfilePath := ""
+	fmt.Println()
+	log.Infof("Searching for Podfile")
 
-	if configs.PodfilePath == "" {
-		fmt.Println()
-		log.Infof("Searching for Podfile")
-
-		absSourceRootPath, err := pathutil.AbsPath(configs.SourceRootPath)
-		if err != nil {
-			failf("Failed to expand (%s), error: %s", configs.SourceRootPath, err)
-		}
-
-		absPodfilePath, err := findMostRootPodfile(absSourceRootPath)
-		if err != nil {
-			failf("Failed to find Podfile, error: %s", err)
-		}
-		if absPodfilePath == "" {
-			failf("No Podfile found")
-		}
-
-		log.Donef("Found Podfile: %s", absPodfilePath)
-
-		podfilePath = absPodfilePath
+	var podfileProvider DepfileProvider
+	if configs.PodfilePath != "" {
+		podfileProvider = NewInputPodfileProvider(configs.PodfilePath)
 	} else {
-		absPodfilePath, err := pathutil.AbsPath(configs.PodfilePath)
+		podfileProvider = NewPodDepFileProvider(configs.SourceRootPath)
+	}
+	podfilePath, err := podfileProvider.DepFilePath()
+	if err != nil {
+		failf("Failed to find Podfile: %s", err)
+	}
+	if podfilePath == "" {
+		failf("No Podfile found")
+	}
+
+	log.Donef("Using Podfile: %s", podfilePath)
+
+	podfileLockPth, err := podfileProvider.LockFilePath()
+	if err != nil {
+		log.Warnf("No Podfile.lock found: %s", err)
+		log.Warnf("Make sure it's committed into your repository!")
+	} else {
+		log.Donef("Using Podfile.lock: %s", podfilePath)
+	}
+
+	var gemFileProvider DepfileProvider
+	gemFileProvider = NewGemFileProvider(filepath.Dir(podfilePath))
+	gemFilePath, err := gemFileProvider.DepFilePath()
+	if err != nil {
+		log.Warnf("No Gemfile found: %s", err)
+	} else {
+		log.Donef("Using Gemfile: %s", gemFilePath)
+	}
+
+	gemFileLockPath, err := gemFileProvider.LockFilePath()
+	if err != nil {
+		log.Warnf("No Gemfile.lock found: %s", err)
+	} else {
+		log.Donef("Using Gemfile.lock: %s", gemFileLockPath)
+	}
+
+	podVersion := ""
+	if podfileLockPth != "" {
+		var podfileLockPodVersionReader DepVersionReader
+		podfileLockPodVersionReader = NewPodfileLockPodVersionReader()
+		podfileLock, err := os.Open(podfileLockPth)
 		if err != nil {
-			failf("Failed to expand (%s), error: %s", configs.PodfilePath, err)
+
+		}
+		podVersion, err = podfileLockPodVersionReader.ReadVersion(podfileLock)
+		if err != nil {
+
+		}
+	}
+
+	useBundler := false
+	if gemFileLockPath != "" {
+		var gemFileLockPodVersionReader DepVersionReader
+		gemFileLockPodVersionReader = NewGemFileLockVersionReader()
+		gemFileLock, err := os.Open(gemFileLockPath)
+		if err != nil {
+
+		}
+		version, err := gemFileLockPodVersionReader.ReadVersion(gemFileLock)
+		if err != nil {
+
 		}
 
-		fmt.Println()
-		log.Infof("Using Podfile: %s", absPodfilePath)
+		if version != "" {
+			var depVersionComparator DepVersionComparator
+			depVersionComparator = NewGemDepVersionComparator()
+			isIncludedVersionRange, err := depVersionComparator.Included(podVersion, version)
+			if err != nil {
+				failf("Failed to compare version range in gem lockfile, error: %s", err)
+			}
+			if !isIncludedVersionRange {
+				log.Warnf("Cocoapods version required in Podfile.lock (%s) does not match Gemfile.lock (%s). Will install Cocoapods using bundler.", useCocoapodsVersionFromPodfileLock, useCocoapodsVersionFromGemfileLock)
+			}
 
-		podfilePath = absPodfilePath
+			podVersion = version
+			useBundler = true
+		}
 	}
+
+	///
 
 	podfileDir := filepath.Dir(podfilePath)
 
@@ -293,13 +130,8 @@ func main() {
 	log.Printf("Searching for Podfile.lock")
 
 	// Check Podfile.lock for CocoaPods version
-	podfileLockPth := filepath.Join(podfileDir, "Podfile.lock")
-	isPodfileLockExists, err := pathutil.IsPathExists(podfileLockPth)
-	if err != nil {
-		failf("Failed to check Podfile.lock at: %s, error: %s", podfileLockPth, err)
-	}
-
-	if isPodfileLockExists {
+	podfileLockPth, err := podfileProvider.LockFilePath()
+	if err == nil {
 		// Podfile.lock exist search for version
 		log.Printf("Found Podfile.lock: %s", podfileLockPth)
 
@@ -545,7 +377,7 @@ func main() {
 	}
 
 	// Collecting caches
-	if configs.IsCacheDisabled != "true" && isPodfileLockExists {
+	if configs.IsCacheDisabled != "true" && podfileLockPth != "" {
 		fmt.Println()
 		log.Infof("Collecting Pod cache paths...")
 

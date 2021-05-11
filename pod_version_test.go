@@ -6,78 +6,78 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestFindMostRootPodfile(t *testing.T) {
-	t.Log("single Podfile")
-	{
-		fileList := []string{
-			"./Podfile",
-		}
+// func TestFindMostRootPodfile(t *testing.T) {
+// 	t.Log("single Podfile")
+// 	{
+// 		fileList := []string{
+// 			"./Podfile",
+// 		}
 
-		podfile, err := findMostRootPodfileInFileList(fileList)
-		require.NoError(t, err)
-		require.Equal(t, "./Podfile", podfile)
-	}
+// 		podfile, err := findMostRootPodfileInFileList(fileList)
+// 		require.NoError(t, err)
+// 		require.Equal(t, "./Podfile", podfile)
+// 	}
 
-	t.Log("single Podfile")
-	{
-		fileList := []string{
-			"/Users/bitrise/my/podfile/dir/Podfile",
-		}
+// 	t.Log("single Podfile")
+// 	{
+// 		fileList := []string{
+// 			"/Users/bitrise/my/podfile/dir/Podfile",
+// 		}
 
-		podfile, err := findMostRootPodfileInFileList(fileList)
-		require.NoError(t, err)
-		require.Equal(t, "/Users/bitrise/my/podfile/dir/Podfile", podfile)
-	}
+// 		podfile, err := findMostRootPodfileInFileList(fileList)
+// 		require.NoError(t, err)
+// 		require.Equal(t, "/Users/bitrise/my/podfile/dir/Podfile", podfile)
+// 	}
 
-	t.Log("lower case Podfile")
-	{
-		fileList := []string{
-			"/Users/bitrise/my/podfile/dir/podfile",
-		}
+// 	t.Log("lower case Podfile")
+// 	{
+// 		fileList := []string{
+// 			"/Users/bitrise/my/podfile/dir/podfile",
+// 		}
 
-		podfile, err := findMostRootPodfileInFileList(fileList)
-		require.NoError(t, err)
-		require.Equal(t, "/Users/bitrise/my/podfile/dir/podfile", podfile)
-	}
+// 		podfile, err := findMostRootPodfileInFileList(fileList)
+// 		require.NoError(t, err)
+// 		require.Equal(t, "/Users/bitrise/my/podfile/dir/podfile", podfile)
+// 	}
 
-	t.Log("multi case Podfile")
-	{
-		fileList := []string{
-			"/Users/bitrise/my/podfile/dir/poDfile",
-		}
+// 	t.Log("multi case Podfile")
+// 	{
+// 		fileList := []string{
+// 			"/Users/bitrise/my/podfile/dir/poDfile",
+// 		}
 
-		podfile, err := findMostRootPodfileInFileList(fileList)
-		require.NoError(t, err)
-		require.Equal(t, "/Users/bitrise/my/podfile/dir/poDfile", podfile)
-	}
+// 		podfile, err := findMostRootPodfileInFileList(fileList)
+// 		require.NoError(t, err)
+// 		require.Equal(t, "/Users/bitrise/my/podfile/dir/poDfile", podfile)
+// 	}
 
-	t.Log("multiple Podfile")
-	{
-		fileList := []string{
-			"/Users/bitrise/my/podfile/dir/Podfile",
-			"/Users/bitrise/my/dir/Podfile",
-			"/Users/bitrise/dir/Podfile",
-		}
+// 	t.Log("multiple Podfile")
+// 	{
+// 		fileList := []string{
+// 			"/Users/bitrise/my/podfile/dir/Podfile",
+// 			"/Users/bitrise/my/dir/Podfile",
+// 			"/Users/bitrise/dir/Podfile",
+// 		}
 
-		podfile, err := findMostRootPodfileInFileList(fileList)
-		require.NoError(t, err)
-		require.Equal(t, "/Users/bitrise/dir/Podfile", podfile)
-	}
+// 		podfile, err := findMostRootPodfileInFileList(fileList)
+// 		require.NoError(t, err)
+// 		require.Equal(t, "/Users/bitrise/dir/Podfile", podfile)
+// 	}
 
-	t.Log("multiple Podfile")
-	{
-		fileList := []string{
-			"./my/podfile/dir/Podfile",
-			"./my/dir/Podfile",
-			"./dir/Podfile",
-			"./",
-		}
+// 	t.Log("multiple Podfile")
+// 	{
+// 		fileList := []string{
+// 			"./my/podfile/dir/Podfile",
+// 			"./my/dir/Podfile",
+// 			"./dir/Podfile",
+// 			"./",
+// 		}
 
-		podfile, err := findMostRootPodfileInFileList(fileList)
-		require.NoError(t, err)
-		require.Equal(t, "./dir/Podfile", podfile)
-	}
-}
+// 		podfile, err := findMostRootPodfileInFileList(fileList)
+// 		require.NoError(t, err)
+// 		require.Equal(t, "./dir/Podfile", podfile)
+// 	}
+// }
 
 func TestCocoapodsVersionFromPodfileLockContent(t *testing.T) {
 	t.Log("Podfile.lock cocoapods")
